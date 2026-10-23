@@ -28,7 +28,35 @@ class BillReceiptDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               // Store Header
-              const Icon(Icons.local_cafe_rounded, size: 48, color: Colors.teal),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.teal.shade200, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/platano_splash.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      color: Colors.teal.shade50,
+                      child: const Icon(
+                        Icons.local_drink_rounded,
+                        color: Colors.teal,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(height: 8),
               const Text(
                 'PLATANO AVIL MILK',

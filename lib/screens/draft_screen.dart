@@ -126,6 +126,7 @@ class _DraftScreenState extends State<DraftScreen> {
         final totalHeldAmount = allDrafts.fold(0.0, (sum, d) => sum + d.grandTotal);
 
         return Scaffold(
+          primary: false,
           backgroundColor: const Color(0xFFF8FAFC),
           body: Column(
             children: [
@@ -367,7 +368,7 @@ class _DraftScreenState extends State<DraftScreen> {
                         ),
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 88),
                         itemCount: filteredDrafts.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {

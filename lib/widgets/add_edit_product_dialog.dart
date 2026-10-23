@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/product.dart';
 import '../services/billing_manager.dart';
+import '../services/backup_service.dart';
 
 class AddEditProductDialog extends StatefulWidget {
   final Product? productToEdit;
@@ -40,7 +42,9 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
     super.initState();
     final p = widget.productToEdit;
     _nameController = TextEditingController(text: p?.name ?? '');
-    _priceController = TextEditingController(text: p != null ? p.price.toStringAsFixed(0) : '');
+    _priceController = TextEditingController(
+      text: p != null ? p.price.toStringAsFixed(0) : '',
+    );
     _codeController = TextEditingController(text: p?.code ?? '');
     _imagePath = p?.imagePath;
 
@@ -77,9 +81,9 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not pick image: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not pick image: $e')));
       }
     }
   }
@@ -105,8 +109,14 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
               ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.teal.shade50, shape: BoxShape.circle),
-                  child: const Icon(Icons.photo_library_rounded, color: Colors.teal),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.photo_library_rounded,
+                    color: Colors.teal,
+                  ),
                 ),
                 title: const Text('Choose from Gallery'),
                 subtitle: const Text('Pick existing photo from device'),
@@ -118,8 +128,14 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
               ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.teal.shade50, shape: BoxShape.circle),
-                  child: const Icon(Icons.camera_alt_rounded, color: Colors.teal),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Colors.teal,
+                  ),
                 ),
                 title: const Text('Take a Photo'),
                 subtitle: const Text('Use camera to capture item'),
@@ -132,10 +148,19 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
                 ListTile(
                   leading: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
-                    child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.red,
+                    ),
                   ),
-                  title: const Text('Remove Photo', style: TextStyle(color: Colors.red)),
+                  title: const Text(
+                    'Remove Photo',
+                    style: TextStyle(color: Colors.red),
+                  ),
                   onTap: () {
                     Navigator.pop(ctx);
                     setState(() => _imagePath = null);
@@ -148,14 +173,24 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
     );
   }
 
-  void _saveProduct() {
+  Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final name = _nameController.text.trim();
+    final name = _nameController.text.trim().toUpperCase();
     final price = double.tryParse(_priceController.text.trim()) ?? 0.0;
     final code = _codeController.text.trim();
 
     final manager = BillingManager();
+    final productId = widget.productToEdit?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+
+    String? finalImagePath = _imagePath;
+    if (finalImagePath != null && File(finalImagePath).existsSync()) {
+      // Persist into permanent Platano_POS/images directory so it survives uninstall
+      final savedPath = await BackupService.persistImageFile(finalImagePath, productId);
+      if (savedPath != null) {
+        finalImagePath = savedPath;
+      }
+    }
 
     if (widget.productToEdit != null) {
       // Edit existing
@@ -164,28 +199,31 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
         price: price,
         category: _selectedCategory,
         code: code,
-        imagePath: _imagePath,
-        clearImage: _imagePath == null,
+        imagePath: finalImagePath,
+        clearImage: finalImagePath == null,
       );
-      manager.updateProduct(updated);
+      await manager.updateProduct(updated);
     } else {
       // Add new
       final newProduct = Product(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: productId,
         name: name,
         price: price,
         category: _selectedCategory,
         code: code.isEmpty ? '${manager.products.length + 101}' : code,
-        imagePath: _imagePath,
+        imagePath: finalImagePath,
       );
-      manager.addProduct(newProduct);
+      await manager.addProduct(newProduct);
     }
 
+    if (!mounted) return;
     Navigator.of(context).pop(true);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          widget.productToEdit != null ? 'Item updated successfully!' : 'Item added successfully! ✅',
+          widget.productToEdit != null
+              ? 'Item updated successfully!'
+              : 'Item added successfully! ✅',
         ),
         backgroundColor: Colors.teal.shade800,
         behavior: SnackBarBehavior.floating,
@@ -215,13 +253,19 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
                     children: [
                       CircleAvatar(
                         backgroundColor: Colors.teal.shade50,
-                        child: Icon(isEditing ? Icons.edit : Icons.local_drink_rounded, color: Colors.teal),
+                        child: Icon(
+                          isEditing ? Icons.edit : Icons.local_drink_rounded,
+                          color: Colors.teal,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           isEditing ? 'Edit Item' : 'Add New Item',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       IconButton(
@@ -232,74 +276,103 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
                   ),
                   const Divider(height: 20),
 
-                  // Photo Picker Section
-                  Center(
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        InkWell(
-                          onTap: _showImageSourcePicker,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            width: 105,
-                            height: 105,
-                            decoration: BoxDecoration(
-                              color: Colors.teal.shade50,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: _imagePath != null ? Colors.teal : Colors.teal.shade200,
-                                width: 2,
-                              ),
-                              image: (_imagePath != null && File(_imagePath!).existsSync())
-                                  ? DecorationImage(
-                                      image: FileImage(File(_imagePath!)),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                            ),
-                            child: (_imagePath == null || !File(_imagePath!).existsSync())
-                                ? Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.add_a_photo_outlined, size: 34, color: Colors.teal.shade700),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Add Photo',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.teal.shade800,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                : null,
-                          ),
+                  // Photo Picker Section (Full Width)
+                  InkWell(
+                    onTap: _showImageSourcePicker,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      width: double.infinity,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        color: (_imagePath != null &&
+                                File(_imagePath!).existsSync())
+                            ? Colors.grey.shade100
+                            : Colors.teal.shade50.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: _imagePath != null
+                              ? Colors.teal
+                              : Colors.teal.shade200,
+                          width: 1.5,
                         ),
-                        if (_imagePath != null)
-                          Positioned(
-                            bottom: -4,
-                            right: -4,
-                            child: InkWell(
-                              onTap: _showImageSourcePicker,
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.teal,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.15),
-                                      blurRadius: 4,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12.5),
+                        child: (_imagePath != null &&
+                                File(_imagePath!).existsSync())
+                            ? Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.file(
+                                    File(_imagePath!),
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    fit: BoxFit.fill,
+                                  ),
+                                  Positioned(
+                                    bottom: 8,
+                                    right: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.7),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.edit,
+                                            size: 13,
+                                            color: Colors.white,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Change Photo',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ],
-                                ),
-                                child: const Icon(Icons.edit, size: 14, color: Colors.white),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.add_photo_alternate_outlined,
+                                    size: 38,
+                                    color: Colors.teal.shade700,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Add Item Photo',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.teal.shade800,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Tap to upload from Gallery or Camera',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -307,9 +380,18 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
                   // Product Name
                   TextFormField(
                     controller: _nameController,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      TextInputFormatter.withFunction((oldValue, newValue) {
+                        return TextEditingValue(
+                          text: newValue.text.toUpperCase(),
+                          selection: newValue.selection,
+                        );
+                      }),
+                    ],
                     decoration: const InputDecoration(
                       labelText: 'Product Name *',
-                      hintText: 'e.g. Special Avil Milk, Mango Juice',
+                      hintText: 'e.g. SPECIAL AVIL MILK, MANGO JUICE',
                       prefixIcon: Icon(Icons.fastfood_outlined),
                       border: OutlineInputBorder(),
                     ),
@@ -347,11 +429,17 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
                         flex: 3,
                         child: TextFormField(
                           controller: _priceController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: const InputDecoration(
                             labelText: 'Price (₹) *',
                             hintText: '0.00',
-                            prefixIcon: const Icon(Icons.currency_rupee, size: 22, color: Colors.black),
+                            prefixIcon: const Icon(
+                              Icons.currency_rupee,
+                              size: 22,
+                              color: Colors.black,
+                            ),
                             border: OutlineInputBorder(),
                           ),
                           validator: (val) {
@@ -387,13 +475,18 @@ class _AddEditProductDialogState extends State<AddEditProductDialog> {
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.teal,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     onPressed: _saveProduct,
                     icon: Icon(isEditing ? Icons.check : Icons.save),
                     label: Text(
                       isEditing ? 'Save Changes' : 'Add Item',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
